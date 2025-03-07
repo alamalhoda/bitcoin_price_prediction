@@ -3,6 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 import mplfinance as mpf
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
 # فانکشن برای دریافت داده از اینترنت
 def fetch_data(ticker='BTC-USD', start_date='2010-01-01', end_date='2025-03-06'):
@@ -82,6 +85,46 @@ def plot_daily_returns(data):
     plt.ylabel('Frequency')
     plt.show()
 
+
+# فانکشن جدید برای آماده‌سازی داده و پیش‌بینی
+def prepare_and_predict(data, lag_days=5):
+    # آماده‌سازی داده
+    data['Target'] = data['Close'].shift(-1)  # قیمت روز بعد به‌عنوان هدف
+    for i in range(1, lag_days + 1):
+        data[f'Close_Lag_{i}'] = data['Close'].shift(i)  # قیمت‌های قبلی به‌عنوان ویژگی
+    
+    # حذف ردیف‌های خالی
+    data = data.dropna()
+    
+    # ویژگی‌ها و هدف
+    X = data[[f'Close_Lag_{i}' for i in range(1, lag_days + 1)]]
+    y = data['Target']
+    
+    # تقسیم داده به آموزشی و آزمایشی
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    
+    # ساخت و آموزش مدل
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    
+    # پیش‌بینی
+    predictions = model.predict(X_test)
+    
+    # ارزیابی
+    mse = mean_squared_error(y_test, predictions)
+    print(f"Mean Squared Error: {mse}")
+    
+    # رسم پیش‌بینی‌ها در مقابل داده واقعی
+    plt.figure(figsize=(14, 7))
+    plt.plot(y_test.index, y_test, label='Actual Price')
+    plt.plot(y_test.index, predictions, label='Predicted Price')
+    plt.title('Bitcoin Price Prediction')
+    plt.xlabel('Date')
+    plt.ylabel('Price (USD)')
+    plt.legend()
+    plt.show()
+
+
 # اجرای اصلی
 def main():
     # می‌تونی داده رو از اینترنت بگیری یا از فایل بخونی
@@ -100,6 +143,9 @@ def main():
     plot_moving_averages(data)
     # plot_candlestick(data)
     plot_daily_returns(data)
+
+    # پیش‌بینی قیمت
+    prepare_and_predict(data)
 
     # ذخیره داده (اختیاری)
     # save_data_to_csv(data)
