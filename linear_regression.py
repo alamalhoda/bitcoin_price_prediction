@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 
-def prepare_and_predict(data, lag_days=5):
+def prepare_and_predict(data, lag_days=15):
     data['Target'] = data['Close'].shift(-1)
     for i in range(1, lag_days + 1):
         data[f'Close_Lag_{i}'] = data['Close'].shift(i)
