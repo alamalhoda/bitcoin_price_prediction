@@ -5,3 +5,4 @@ mplfinance
 scikit-learn
 tensorflow
 yfinance
+keras-tcn==3.4.4

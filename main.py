@@ -5,6 +5,7 @@ from random_forest import predict_with_random_forest
 from lstm_model import predict_with_lstm
 from gru_model import predict_with_gru
 from arima_model import predict_with_arima
+from tcn_model import predict_with_tcn
 
 
 
@@ -28,6 +29,7 @@ def main():
     # predict_with_lstm(data)
     predict_with_gru(data)
     # predict_with_arima(data)
+    predict_with_tcn(data)
 
 if __name__ == "__main__":
     main()
