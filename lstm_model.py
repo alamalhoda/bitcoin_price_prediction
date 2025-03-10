@@ -15,7 +15,7 @@ def calculate_rsi(data, periods=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-def predict_with_lstm(data, lag_days=10, epochs=50):
+def predict_with_lstm(data, lag_days=10, epochs=30):
     data['Target'] = data['Close'].shift(-1)
     for i in range(1, lag_days + 1):
         data[f'Close_Lag_{i}'] = data['Close'].shift(i)
@@ -30,7 +30,7 @@ def predict_with_lstm(data, lag_days=10, epochs=50):
     y = data['Target']
     
     # نرمال‌سازی فقط روی دیتای ترن
-    train_size = int(len(X) * 0.99)  # 99% برای ترن، 1% برای تست
+    train_size = int(len(X) * 0.90)  # 99% برای ترن، 1% برای تست
     X_train, X_test = X[:train_size], X[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     
