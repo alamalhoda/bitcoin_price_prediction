@@ -1,9 +1,10 @@
 import yfinance as yf
 import pandas as pd
 
-def fetch_data(ticker='BTC-USD', start_date='2010-01-01', end_date='2025-03-06'):
+def fetch_data(ticker='BTC-USD', start_date='2010-01-01', end_date='2025-03-06',interval='1d'):
     print(f"Fetching {ticker} data from {start_date} to {end_date}...")
-    data = yf.download(ticker, start=start_date, end=end_date)
+    data = yf.download(ticker, start=start_date, end=end_date,interval=interval)
+    # data = yf.download('BTC-USD', start='2018-01-01', end='2025-03-09', interval='1h')
     data.index.name = 'Date'
     return data
 

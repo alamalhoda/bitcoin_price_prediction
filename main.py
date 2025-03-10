@@ -7,8 +7,7 @@ from lstm_model import predict_with_lstm
 from gru_model import predict_with_gru
 from arima_model import predict_with_arima
 from prophet_model import predict_with_prophet
-
-
+from tcn_model import predict_with_tcn
 
 def main():
     data = load_data_from_csv()
@@ -18,7 +17,7 @@ def main():
     # print(data.head())
 
     # رسم نمودارها
-    # plot_close_price(data)
+    plot_close_price(data)
     # plot_volume(data)
     # plot_moving_averages(data)
     # plot_candlestick(data)
@@ -30,6 +29,7 @@ def main():
     # predict_with_lstm(data)
     # predict_with_gru(data)
     # predict_with_arima(data)
+    predict_with_tcn(data)
 
     # لود دیتا از فایل با تنظیم skiprows
     data = pd.read_csv('/Users/alamalhoda/Projects/bitcoin_price_prediction/bitcoin_data.csv', skiprows=2)  # رد کردن دو خط اول
