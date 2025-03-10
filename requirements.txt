@@ -1,8 +1,10 @@
-pandas
-numpy
+pandas<2.0.0
+numpy<2.0.0
 matplotlib
 mplfinance
-scikit-learn
-tensorflow
+scikit-learn<1.3.0
+protobuf
+tensorflow==2.15.0
+# keras==2.8.0
 yfinance
-keras-tcn==3.4.4
+keras-tcn==3.3.1
