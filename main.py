@@ -1,5 +1,5 @@
 import pandas as pd
-from data_handler import load_data_from_csv
+from data_handler import fetch_cryptocompare_data, fetch_data, load_data_from_csv, save_data_to_csv
 from plotting import plot_close_price, plot_volume, plot_moving_averages, plot_candlestick, plot_daily_returns
 from linear_regression import predict_future_with_linear
 from random_forest import predict_with_random_forest
@@ -17,7 +17,7 @@ def main():
     # print(data.head())
 
     # رسم نمودارها
-    plot_close_price(data)
+    # plot_close_price(data)
     # plot_volume(data)
     # plot_moving_averages(data)
     # plot_candlestick(data)
@@ -29,7 +29,7 @@ def main():
     # predict_with_lstm(data)
     # predict_with_gru(data)
     # predict_with_arima(data)
-    predict_with_tcn(data)
+    # predict_with_tcn(data)
 
     # لود دیتا از فایل با تنظیم skiprows
     # data = pd.read_csv('/Users/alamalhoda/Projects/bitcoin_price_prediction/bitcoin_data.csv', skiprows=2)  # رد کردن دو خط اول
