@@ -71,3 +71,4 @@ Werkzeug
 wheel
 wrapt
 zipp
+psutil

@@ -26,7 +26,7 @@ def main():
     # اجرای مدل‌ها
     # predict_future_with_linear(data)
     # predict_with_random_forest(data)
-    # predict_with_lstm(data)
+    predict_with_lstm(data)
     # predict_with_gru(data)
     # predict_with_arima(data)
     # predict_with_tcn(data)
