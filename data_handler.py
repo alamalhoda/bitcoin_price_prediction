@@ -226,14 +226,17 @@ def fetch_nobitex_ohlc(start_date_shamsi, end_date_shamsi, symbol, resolution, a
 
 def load_hourly_data(file_path, convert_to_tehran_time=True):
     """
-    خواندن داده‌های ساعتی از فایل CSV و آماده‌سازی آن برای تحلیل
-    
+عملکرد: داده‌های ساعتی رو از فایل CSV می‌خونه و ویژگی‌های اضافی (مثل تغییرات قیمت، میانگین متحرک و نوسانات) رو محاسبه می‌کنه.    
+    ویژگی‌های محاسبه‌شده:
+    Hourly_Change: تغییرات ساعتی قیمت (درصد)
+    SMA_24 و SMA_72: میانگین متحرک ۲۴ و ۷۲ ساعته
+    Volatility_24h: نوسانات ۲۴ ساعته (انحراف معیار)
     Args:
         file_path (str): مسیر فایل CSV (نام فایل در پوشه data)
         convert_to_tehran_time (bool): تبدیل زمان به ساعت تهران
         
     Returns:
-        DataFrame: داده‌های ساعتی آماده شده
+        DataFrame: دیتافریم با ستون‌های OHLC، Volume و ویژگی‌های اضافی.
     """
     try:
         # مسیر کامل فایل
@@ -347,7 +350,10 @@ def merge_hourly_data_files(file_paths, output_file='merged_hourly_data.csv'):
 def convert_hourly_to_daily(hourly_data, output_file=None):
     """
     تبدیل داده‌های ساعتی به داده‌های روزانه
-    
+    Daily_Change: تغییرات روزانه (درصد)
+    SMA_7 و SMA_30: میانگین متحرک ۷ و ۳۰ روزه
+    Volatility_7d: نوسانات ۷ روزه
+
     Args:
         hourly_data (DataFrame): دیتافریم داده‌های ساعتی
         output_file (str, optional): نام فایل خروجی برای ذخیره داده‌های روزانه
@@ -419,6 +425,10 @@ def convert_hourly_to_daily(hourly_data, output_file=None):
 def extract_daily_min_max_hours(hourly_data, output_file=None):
     """
     استخراج ساعت و مقدار کمترین و بیشترین قیمت بسته شدن در هر روز
+
+    Min_Hour و Min_Close: ساعت و مقدار کمینه قیمت
+    Max_Hour و Max_Close: ساعت و مقدار بیشینه قیمت
+    Daily_Range و Daily_Range_Percent: دامنه تغییرات روزانه (مطلق و درصد)
     
     Args:
         hourly_data (DataFrame): دیتافریم داده‌های ساعتی
@@ -456,6 +466,11 @@ def extract_daily_min_max_hours(hourly_data, output_file=None):
         # یافتن ردیف با بیشترین قیمت بسته شدن
         max_row = group.loc[group['Close'].idxmax()]
         
+        # محاسبه فاصله زمانی بین کمینه و بیشینه (به ساعت)
+        time_diff = abs(max_row['Hour'] - min_row['Hour'])
+        if time_diff > 12:  # اگر از نیمه‌شب عبور کرده باشد
+            time_diff = 24 - time_diff
+        
         # ایجاد ردیف جدید برای نتیجه
         new_row = {
             'Date': date,
@@ -464,7 +479,9 @@ def extract_daily_min_max_hours(hourly_data, output_file=None):
             'Max_Hour': max_row['Hour'],
             'Max_Close': max_row['Close'],
             'Daily_Range': max_row['Close'] - min_row['Close'],
-            'Daily_Range_Percent': (max_row['Close'] - min_row['Close']) / min_row['Close'] * 100
+            'Daily_Range_Percent': (max_row['Close'] - min_row['Close']) / min_row['Close'] * 100,
+            'Time_Diff_Hours': time_diff,  # فاصله زمانی بین کمینه و بیشینه
+            'Min_Before_Max': 1 if min_row['Hour'] < max_row['Hour'] else 0  # آیا کمینه قبل از بیشینه رخ داده است؟
         }
         
         # اضافه کردن به دیتافریم نتیجه
@@ -478,6 +495,30 @@ def extract_daily_min_max_hours(hourly_data, output_file=None):
     
     # مرتب‌سازی بر اساس تاریخ
     result.sort_index(inplace=True)
+    
+    # محاسبه همبستگی‌ها
+    min_hour_corr = result['Min_Hour'].corr(result['Daily_Range_Percent'])
+    max_hour_corr = result['Max_Hour'].corr(result['Daily_Range_Percent'])
+    time_diff_corr = result['Time_Diff_Hours'].corr(result['Daily_Range_Percent'])
+    
+    # چاپ نتایج همبستگی
+    print(f"\nهمبستگی ساعت کمینه با دامنه تغییرات: {min_hour_corr:.4f}")
+    print(f"همبستگی ساعت بیشینه با دامنه تغییرات: {max_hour_corr:.4f}")
+    print(f"همبستگی فاصله زمانی کمینه-بیشینه با دامنه تغییرات: {time_diff_corr:.4f}")
+    
+    # محاسبه آمار توصیفی برای الگوهای زمانی
+    min_before_max_pct = result['Min_Before_Max'].mean() * 100
+    print(f"\nدرصد روزهایی که کمینه قبل از بیشینه رخ داده: {min_before_max_pct:.2f}%")
+    
+    # محاسبه میانگین دامنه تغییرات برای هر ساعت کمینه
+    min_hour_avg_range = result.groupby('Min_Hour')['Daily_Range_Percent'].mean()
+    print("\nمیانگین دامنه تغییرات برای هر ساعت کمینه:")
+    print(min_hour_avg_range.sort_values(ascending=False).head(5))
+    
+    # محاسبه میانگین دامنه تغییرات برای هر ساعت بیشینه
+    max_hour_avg_range = result.groupby('Max_Hour')['Daily_Range_Percent'].mean()
+    print("\nمیانگین دامنه تغییرات برای هر ساعت بیشینه:")
+    print(max_hour_avg_range.sort_values(ascending=False).head(5))
     
     # ذخیره در فایل CSV اگر نام فایل مشخص شده باشد
     if output_file:
@@ -499,7 +540,8 @@ def extract_daily_min_max_hours(hourly_data, output_file=None):
 def plot_min_max_hour_frequency(min_max_data, output_file=None):
     """
     ایجاد نمودار فراوانی ساعت کمترین و بیشترین قیمت
-    
+    دو نمودار میله‌ای (یکی برای کمینه، یکی برای بیشینه)
+    دیتافریم با فراوانی ساعت‌ها    
     Args:
         min_max_data (DataFrame): دیتافریم حاصل از تابع extract_daily_min_max_hours
         output_file (str, optional): نام فایل خروجی برای ذخیره نمودار
@@ -597,6 +639,126 @@ def plot_min_max_hour_frequency(min_max_data, output_file=None):
     
     return freq_df
 
+def plot_hour_price_correlations(min_max_data, output_file=None):
+    """
+    تحلیل و نمایش همبستگی بین ساعت کمینه/بیشینه و تغییرات قیمت
+    
+    Args:
+        min_max_data (DataFrame): دیتافریم حاصل از تابع extract_daily_min_max_hours
+        output_file (str, optional): نام فایل خروجی برای ذخیره نمودار
+        
+    Returns:
+        None
+    """
+    if min_max_data is None or min_max_data.empty:
+        print("داده‌های ورودی خالی هستند.")
+        return None
+    
+    # اطمینان از وجود ستون‌های مورد نیاز
+    required_columns = ['Min_Hour', 'Max_Hour', 'Daily_Range_Percent', 'Time_Diff_Hours']
+    missing_columns = [col for col in required_columns if col not in min_max_data.columns]
+    
+    if missing_columns:
+        print(f"ستون‌های {', '.join(missing_columns)} در داده‌ها وجود ندارند.")
+        return None
+    
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import seaborn as sns
+    
+    # ایجاد نمودار
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    
+    # 1. نمودار پراکندگی ساعت کمینه و دامنه تغییرات
+    sns.scatterplot(x='Min_Hour', y='Daily_Range_Percent', data=min_max_data, ax=axes[0, 0], alpha=0.6)
+    axes[0, 0].set_title('همبستگی ساعت کمینه و دامنه تغییرات', fontsize=14)
+    axes[0, 0].set_xlabel('ساعت کمینه', fontsize=12)
+    axes[0, 0].set_ylabel('دامنه تغییرات (%)', fontsize=12)
+    axes[0, 0].grid(True, linestyle='--', alpha=0.7)
+    
+    # خط روند
+    z = np.polyfit(min_max_data['Min_Hour'], min_max_data['Daily_Range_Percent'], 1)
+    p = np.poly1d(z)
+    axes[0, 0].plot(np.arange(0, 24), p(np.arange(0, 24)), "r--", alpha=0.8)
+    corr = min_max_data['Min_Hour'].corr(min_max_data['Daily_Range_Percent'])
+    axes[0, 0].text(0.05, 0.95, f'همبستگی: {corr:.4f}', transform=axes[0, 0].transAxes, 
+                   fontsize=12, verticalalignment='top')
+    
+    # 2. نمودار پراکندگی ساعت بیشینه و دامنه تغییرات
+    sns.scatterplot(x='Max_Hour', y='Daily_Range_Percent', data=min_max_data, ax=axes[0, 1], alpha=0.6)
+    axes[0, 1].set_title('همبستگی ساعت بیشینه و دامنه تغییرات', fontsize=14)
+    axes[0, 1].set_xlabel('ساعت بیشینه', fontsize=12)
+    axes[0, 1].set_ylabel('دامنه تغییرات (%)', fontsize=12)
+    axes[0, 1].grid(True, linestyle='--', alpha=0.7)
+    
+    # خط روند
+    z = np.polyfit(min_max_data['Max_Hour'], min_max_data['Daily_Range_Percent'], 1)
+    p = np.poly1d(z)
+    axes[0, 1].plot(np.arange(0, 24), p(np.arange(0, 24)), "r--", alpha=0.8)
+    corr = min_max_data['Max_Hour'].corr(min_max_data['Daily_Range_Percent'])
+    axes[0, 1].text(0.05, 0.95, f'همبستگی: {corr:.4f}', transform=axes[0, 1].transAxes, 
+                   fontsize=12, verticalalignment='top')
+    
+    # 3. نمودار پراکندگی فاصله زمانی و دامنه تغییرات
+    sns.scatterplot(x='Time_Diff_Hours', y='Daily_Range_Percent', data=min_max_data, ax=axes[1, 0], alpha=0.6)
+    axes[1, 0].set_title('همبستگی فاصله زمانی کمینه-بیشینه و دامنه تغییرات', fontsize=14)
+    axes[1, 0].set_xlabel('فاصله زمانی (ساعت)', fontsize=12)
+    axes[1, 0].set_ylabel('دامنه تغییرات (%)', fontsize=12)
+    axes[1, 0].grid(True, linestyle='--', alpha=0.7)
+    
+    # خط روند
+    z = np.polyfit(min_max_data['Time_Diff_Hours'], min_max_data['Daily_Range_Percent'], 1)
+    p = np.poly1d(z)
+    axes[1, 0].plot(np.arange(0, 13), p(np.arange(0, 13)), "r--", alpha=0.8)
+    corr = min_max_data['Time_Diff_Hours'].corr(min_max_data['Daily_Range_Percent'])
+    axes[1, 0].text(0.05, 0.95, f'همبستگی: {corr:.4f}', transform=axes[1, 0].transAxes, 
+                   fontsize=12, verticalalignment='top')
+    
+    # 4. نمودار میانگین دامنه تغییرات برای هر ساعت کمینه
+    min_hour_avg_range = min_max_data.groupby('Min_Hour')['Daily_Range_Percent'].mean()
+    min_hour_avg_range = min_hour_avg_range.reindex(np.arange(24), fill_value=0)
+    axes[1, 1].bar(min_hour_avg_range.index, min_hour_avg_range.values, alpha=0.7, color='purple')
+    axes[1, 1].set_title('میانگین دامنه تغییرات برای هر ساعت کمینه', fontsize=14)
+    axes[1, 1].set_xlabel('ساعت کمینه', fontsize=12)
+    axes[1, 1].set_ylabel('میانگین دامنه تغییرات (%)', fontsize=12)
+    axes[1, 1].grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    
+    # ذخیره نمودار اگر نام فایل مشخص شده باشد
+    if output_file:
+        # ایجاد پوشه data اگر وجود نداشت
+        data_dir = "data"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        
+        # ذخیره نمودار
+        output_path = os.path.join(data_dir, output_file)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"نمودار همبستگی‌ها با موفقیت در {output_path} ذخیره شد.")
+    
+    plt.show()
+    
+    # محاسبه ماتریس همبستگی
+    corr_columns = ['Min_Hour', 'Max_Hour', 'Time_Diff_Hours', 'Daily_Range_Percent']
+    corr_matrix = min_max_data[corr_columns].corr()
+    
+    print("\nماتریس همبستگی:")
+    print(corr_matrix)
+    
+    # نمایش ماتریس همبستگی به صورت نموداری
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.4f', linewidths=0.5)
+    plt.title('ماتریس همبستگی متغیرها', fontsize=14)
+    
+    # ذخیره نمودار ماتریس همبستگی
+    if output_file:
+        corr_output_path = os.path.join(data_dir, f"correlation_matrix_{output_file}")
+        plt.savefig(corr_output_path, dpi=300, bbox_inches='tight')
+        print(f"ماتریس همبستگی با موفقیت در {corr_output_path} ذخیره شد.")
+    
+    plt.show()
+
 # مثال استفاده
 if __name__ == "__main__":
     # مثال ۱: دریافت داده‌های نوبیتکس
@@ -651,5 +813,12 @@ if __name__ == "__main__":
     #         if freq_df is not None:
     #             print("\nفراوانی ساعت‌های کمترین و بیشترین قیمت:")
     #             print(freq_df)
+    
+    # مثال ۷: تحلیل و نمایش همبستگی بین ساعت کمینه/بیشینه و تغییرات قیمت
+    # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
+    # if hourly_data is not None:
+    #     min_max_hours = extract_daily_min_max_hours(hourly_data)
+    #     if min_max_hours is not None:
+    #         plot_hour_price_correlations(min_max_hours, "btc_hour_price_correlations.png")
     
     print("برای استفاده از توابع، کامنت‌های مربوطه را از حالت کامنت خارج کنید.")
