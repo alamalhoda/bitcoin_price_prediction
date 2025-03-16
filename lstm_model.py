@@ -17,7 +17,7 @@
 - ۸۰٪ داده‌ها برای آموزش
 - ۲۰٪ داده‌ها برای تست
 - داده‌ها به صورت زمانی مرتب شده‌اند
-- از MinMaxScaler برای نرمال‌سازی داده‌ها استفاده می‌شود
+- از StandardScaler برای نرمال‌سازی داده‌ها استفاده می‌شود (میانگین صفر و انحراف معیار یک)
 
 نحوه وزن‌دهی داده‌ها:
 - وزن‌های نمایی از ۱ تا e برای داده‌های اخیر
@@ -111,7 +111,7 @@ Early Stopping و ReduceLROnPlateau:
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -128,6 +128,7 @@ import shutil
 import psutil
 import tensorflow as tf
 import time
+from sklearn.linear_model import LinearRegression
 
 def create_random_run_name():
     """
@@ -223,9 +224,15 @@ def save_plots_and_report(run_dir, data, train_predictions, test_predictions, y_
     plt.plot(data.index[test_start_idx:test_end_idx], test_predictions, label='قیمت پیش‌بینی شده', color='red', alpha=0.7)
     
     # رسم پیش‌بینی‌های آینده
-    plt.plot(future_dates, future_predictions, label='پیش‌بینی ۳۰ روز آینده', color='green', linestyle='--', alpha=0.8)
+    # اطمینان از اینکه اولین تاریخ پیش‌بینی دقیقاً بعد از آخرین تاریخ تست است
+    if future_dates[0] > data.index[test_end_idx-1] + pd.Timedelta(days=1):
+        # ایجاد تاریخ‌های جدید برای پیش‌بینی که از روز بعد از آخرین روز تست شروع می‌شوند
+        new_future_dates = pd.date_range(start=data.index[test_end_idx-1] + pd.Timedelta(days=1), periods=len(future_predictions), freq='D')
+        plt.plot(new_future_dates, future_predictions, label='پیش‌بینی ۳۰ روز آینده', color='green', linestyle='--', alpha=0.8)
+    else:
+        plt.plot(future_dates, future_predictions, label='پیش‌بینی ۳۰ روز آینده', color='green', linestyle='--', alpha=0.8)
     
-    plt.title('مقایسه قیمت واقعی و پیش‌بینی شده در مرحله تست')
+    plt.title('مقایسه قیمت واقعی و پیش‌بینی شده در مرحله تست و پیش‌بینی قیمت ۳۰ روز آینده')
     plt.xlabel('تاریخ')
     plt.ylabel('قیمت (دلار)')
     plt.grid(True)
@@ -433,7 +440,20 @@ def predict_future_days(model, last_sequence, scaler_X, scaler_y, data, future_d
     # ایجاد یک کپی از داده‌های اصلی برای به‌روزرسانی شاخص‌ها
     future_data = data.copy()
     
-    for _ in range(future_days):
+    # آموزش مدل پیش‌بینی حجم معاملات
+    volume_model = LinearRegression()
+    volume_X = np.arange(len(data)).reshape(-1, 1)
+    volume_y = data['Volume'].values
+    volume_model.fit(volume_X, volume_y)
+    
+    # پیش‌بینی حجم معاملات برای روزهای آینده
+    future_volumes = volume_model.predict(np.arange(len(data), len(data) + future_days).reshape(-1, 1))
+    
+    # تعداد ویژگی‌های مورد نیاز برای اسکالر
+    n_features = scaler_X.n_features_in_
+    lag_days = n_features - 6  # تعداد روزهای گذشته (منهای 6 ویژگی دیگر)
+    
+    for i in range(future_days):
         # پیش‌بینی قیمت روز بعد
         next_pred = model.predict(current_sequence.reshape(1, current_sequence.shape[0], current_sequence.shape[1]))
         future_predictions.append(next_pred[0])
@@ -442,13 +462,13 @@ def predict_future_days(model, last_sequence, scaler_X, scaler_y, data, future_d
         next_date = future_data.index[-1] + pd.Timedelta(days=1)
         next_price = scaler_y.inverse_transform(next_pred)[0][0]
         
-        # اضافه کردن ردیف جدید به داده‌های آینده
+        # اضافه کردن ردیف جدید به داده‌های آینده با حجم معاملات پیش‌بینی شده
         new_row = pd.DataFrame({
             'Close': next_price,
             'Open': next_price * 0.99,  # تخمین قیمت باز شدن
             'High': next_price * 1.01,  # تخمین بالاترین قیمت
             'Low': next_price * 0.99,   # تخمین پایین‌ترین قیمت
-            'Volume': future_data['Volume'].mean(),  # استفاده از میانگین حجم معاملات
+            'Volume': future_volumes[i],  # استفاده از حجم معاملات پیش‌بینی شده
             'Daily_Change': (next_price - future_data['Close'].iloc[-1]) / future_data['Close'].iloc[-1] * 100
         }, index=[next_date])
         
@@ -462,19 +482,19 @@ def predict_future_days(model, last_sequence, scaler_X, scaler_y, data, future_d
         
         # آماده‌سازی توالی جدید برای پیش‌بینی بعدی
         new_sequence = []
-        for i in range(1, current_sequence.shape[0] + 1):
+        for j in range(1, current_sequence.shape[0] + 1):
             lag_features = []
             # اضافه کردن قیمت‌های گذشته
-            for j in range(1, 31):  # 30 روز گذشته
-                lag_features.append(future_data['Close'].iloc[-i-j+1])
+            for k in range(1, lag_days + 1):  # استفاده از تعداد روزهای گذشته محاسبه شده
+                lag_features.append(future_data['Close'].iloc[-j-k+1])
             # اضافه کردن سایر ویژگی‌ها
             lag_features.extend([
-                future_data['Volume'].iloc[-i],
-                future_data['SMA_50'].iloc[-i],
-                future_data['SMA_200'].iloc[-i],
-                future_data['Daily_Change'].iloc[-i],
-                future_data['RSI'].iloc[-i],
-                future_data['Volatility'].iloc[-i]
+                future_data['Volume'].iloc[-j],
+                future_data['SMA_50'].iloc[-j],
+                future_data['SMA_200'].iloc[-j],
+                future_data['Daily_Change'].iloc[-j],
+                future_data['RSI'].iloc[-j],
+                future_data['Volatility'].iloc[-j]
             ])
             new_sequence.append(lag_features)
         
@@ -1003,7 +1023,8 @@ def predict_with_lstm(data, lag_days=10, epochs=50, batch_size=32, validation_sp
         'optimizer': optimizer,
         'loss': loss,
         'train_split_ratio': train_split_ratio,
-        'run_name': run_name
+        'run_name': run_name,
+        'scaler_type': 'StandardScaler'  # اضافه کردن نوع اسکالر به پارامترها
     }
     
     # محاسبه train_size
@@ -1036,12 +1057,12 @@ def predict_with_lstm(data, lag_days=10, epochs=50, batch_size=32, validation_sp
     X = data[[f'Close_Lag_{i}' for i in range(1, lag_days + 1)] + ['Volume', 'SMA_50', 'SMA_200', 'Daily_Change', 'RSI', 'Volatility']]
     y = data['Target']
     
-    # نرمال‌سازی فقط روی دیتای ترن
+    # نرمال‌سازی فقط روی دیتای ترن با StandardScaler
     X_train, X_test = X[:train_size], X[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     
-    scaler_X = MinMaxScaler()
-    scaler_y = MinMaxScaler()
+    scaler_X = StandardScaler()
+    scaler_y = StandardScaler()
     X_train_scaled = scaler_X.fit_transform(X_train)
     y_train_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
     X_test_scaled = scaler_X.transform(X_test)
@@ -1069,11 +1090,15 @@ def predict_with_lstm(data, lag_days=10, epochs=50, batch_size=32, validation_sp
     sample_weights = sample_weights / sample_weights.mean()
     
     # معماری مدل
+    from tensorflow.keras.layers import Conv1D, MaxPooling1D
+
     model = Sequential([
         Input(shape=(lag_days, X.shape[1])),
-        LSTM(50, activation='tanh', return_sequences=True),
+        Conv1D(filters=64, kernel_size=3, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        LSTM(100, activation='tanh', return_sequences=True),
         Dropout(0.3),
-        LSTM(30, activation='tanh'),
+        LSTM(50, activation='tanh'),
         Dropout(0.3),
         Dense(1)
     ])
@@ -1099,7 +1124,10 @@ def predict_with_lstm(data, lag_days=10, epochs=50, batch_size=32, validation_sp
     
     # ایجاد تاریخ‌های آینده
     last_date = data.index[-1]
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=30, freq='D')
+    # تغییر: استفاده از آخرین تاریخ تست به جای آخرین تاریخ داده‌ها
+    test_start_idx = train_size + lag_days
+    last_test_date = data.index[test_start_idx + len(y_test_original) - 1]
+    future_dates = pd.date_range(start=last_test_date + pd.Timedelta(days=1), periods=30, freq='D')
     
     # محاسبه معیارها
     train_mse = mean_squared_error(y_train_original, train_predictions)
@@ -1223,7 +1251,7 @@ if __name__ == "__main__":
     # اجرای مدل با پارامترهای پیش‌فرض
     model, scaler_X, scaler_y, model_params, history = predict_with_lstm(
         data,
-        lag_days=30,
+        lag_days=60,
         epochs=50,
         train_split_ratio=0.90  # 90٪ برای آموزش و 10٪ برای تست 
     )

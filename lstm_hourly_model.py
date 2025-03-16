@@ -371,7 +371,7 @@ def predict_future_days(model, last_sequence, scaler_X, scaler_y, future_hours=2
         scaler_X: مقیاس‌کننده ویژگی‌ها
         scaler_y: مقیاس‌کننده هدف
         future_hours: تعداد ساعت‌های آینده برای پیش‌بینی
-        
+    
     Returns:
         future_predictions: آرایه پیش‌بینی‌های آینده
         future_dates: آرایه تاریخ‌های آینده
@@ -829,7 +829,7 @@ def load_data(file_path):
     
     try:
         # خواندن فایل CSV با رد کردن دو سطر دوم و سوم
-        df = pd.read_csv(file_path, skiprows=[1, 2])
+    df = pd.read_csv(file_path, skiprows=[1, 2])
         print(f"شکل اولیه داده‌ها: {df.shape}")
         print(f"ستون‌های اولیه: {df.columns.tolist()}\n")
         
@@ -840,12 +840,12 @@ def load_data(file_path):
         df['Price'] = pd.to_datetime(df['Price'])
         df.set_index('Price', inplace=True)
         df.index.name = 'Date'
-        
-        # تبدیل ستون‌ها به عددی
+    
+    # تبدیل ستون‌ها به عددی
         numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-        for col in numeric_columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        
+    for col in numeric_columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
         print("نمونه‌ای از داده‌های اولیه:")
         print(df.head(), "\n")
         
@@ -863,13 +863,13 @@ def load_data(file_path):
         
         # محاسبه میانگین‌های متحرک
         df['SMA_24'] = df['Close'].rolling(window=24).mean()  # میانگین متحرک 24 ساعته
-        df['SMA_50'] = df['Close'].rolling(window=50).mean()
-        df['SMA_200'] = df['Close'].rolling(window=200).mean()
-        
-        # محاسبه RSI
+    df['SMA_50'] = df['Close'].rolling(window=50).mean()
+    df['SMA_200'] = df['Close'].rolling(window=200).mean()
+    
+    # محاسبه RSI
         df['RSI'] = calculate_rsi(df, periods=14)
-        
-        # محاسبه نوسانات
+    
+    # محاسبه نوسانات
         df['Volatility_12h'] = df['Hourly_Return'].rolling(window=12).std()
         df['Volatility_24h'] = df['Hourly_Return'].rolling(window=24).std()
         
@@ -887,8 +887,8 @@ def load_data(file_path):
         print(f"تعداد ویژگی‌ها: {len(df.columns)}")
         print("تعداد NaN در هر ستون:")
         print(df.isna().sum())
-        
-        # حذف ردیف‌های با مقادیر NaN
+    
+    # حذف ردیف‌های با مقادیر NaN
         df_cleaned = df.dropna()
         
         if len(df_cleaned) == 0:
