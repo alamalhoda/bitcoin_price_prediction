@@ -223,17 +223,433 @@ def fetch_nobitex_ohlc(start_date_shamsi, end_date_shamsi, symbol, resolution, a
     print(f"داده‌ها با موفقیت در {json_file} و {csv_file} ذخیره شدند.")
     return df
 
+
+def load_hourly_data(file_path, convert_to_tehran_time=True):
+    """
+    خواندن داده‌های ساعتی از فایل CSV و آماده‌سازی آن برای تحلیل
+    
+    Args:
+        file_path (str): مسیر فایل CSV (نام فایل در پوشه data)
+        convert_to_tehran_time (bool): تبدیل زمان به ساعت تهران
+        
+    Returns:
+        DataFrame: داده‌های ساعتی آماده شده
+    """
+    try:
+        # مسیر کامل فایل
+        data_dir = "data"
+        full_path = os.path.join(data_dir, file_path)
+        
+        # خواندن فایل CSV
+        df = pd.read_csv(full_path)
+        
+        # بررسی ستون‌های موجود
+        if 'time' in df.columns:
+            # تبدیل ستون time به datetime
+            if pd.api.types.is_numeric_dtype(df['time']):
+                # اگر time عددی است (timestamp)، آن را به datetime تبدیل می‌کنیم
+                df['time'] = pd.to_datetime(df['time'], unit='ms')
+            else:
+                # در غیر این صورت فرض می‌کنیم که رشته datetime است
+                df['time'] = pd.to_datetime(df['time'])
+                
+            # تبدیل به ساعت تهران اگر درخواست شده باشد
+            if convert_to_tehran_time:
+                if df['time'].dt.tz is None:  # اگر timezone ندارد
+                    df['time'] = df['time'].dt.tz_localize('UTC')
+                tehran_tz = pytz.timezone('Asia/Tehran')
+                df['time'] = df['time'].dt.tz_convert(tehran_tz)
+                
+            # تنظیم time به عنوان ایندکس
+            df.set_index('time', inplace=True)
+        
+        # اطمینان از وجود ستون‌های قیمت
+        required_columns = ['Open', 'High', 'Low', 'Close']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            print(f"هشدار: ستون‌های {', '.join(missing_columns)} در فایل وجود ندارند.")
+        
+        # محاسبه ویژگی‌های اضافی مفید
+        if 'Close' in df.columns and 'Open' in df.columns:
+            # تغییرات قیمت در هر ساعت (درصد)
+            df['Hourly_Change'] = (df['Close'] - df['Open']) / df['Open'] * 100
+        
+        if 'Close' in df.columns:
+            # میانگین متحرک ساده ۲۴ ساعته (یک روز)
+            df['SMA_24'] = df['Close'].rolling(window=24).mean()
+            
+            # میانگین متحرک ساده ۷۲ ساعته (سه روز)
+            df['SMA_72'] = df['Close'].rolling(window=72).mean()
+            
+            # نوسانات قیمت (انحراف معیار ۲۴ ساعته)
+            df['Volatility_24h'] = df['Close'].rolling(window=24).std()
+        
+        print(f"داده‌های ساعتی از فایل {full_path} با موفقیت بارگذاری شدند.")
+        print(f"تعداد کل ساعت‌ها: {len(df)}")
+        print(f"بازه زمانی: از {df.index.min()} تا {df.index.max()}")
+        
+        return df
+    
+    except FileNotFoundError:
+        print(f"خطا: فایل '{file_path}' در پوشه data یافت نشد.")
+        return None
+    except Exception as e:
+        print(f"خطا در بارگذاری داده‌ها: {str(e)}")
+        return None
+
+def merge_hourly_data_files(file_paths, output_file='merged_hourly_data.csv'):
+    """
+    ادغام چندین فایل CSV ساعتی و ذخیره نتیجه در یک فایل جدید
+    
+    Args:
+        file_paths (list): لیست مسیرهای فایل‌های CSV در پوشه data
+        output_file (str): نام فایل خروجی برای ذخیره داده‌های ادغام شده
+        
+    Returns:
+        DataFrame: داده‌های ساعتی ادغام شده
+    """
+    all_dfs = []
+    
+    for file_path in file_paths:
+        df = load_hourly_data(file_path)
+        if df is not None:
+            all_dfs.append(df)
+    
+    if not all_dfs:
+        print("هیچ داده‌ای برای ادغام یافت نشد.")
+        return None
+    
+    # ادغام همه دیتافریم‌ها
+    merged_df = pd.concat(all_dfs)
+    
+    # حذف ردیف‌های تکراری بر اساس ایندکس (زمان)
+    merged_df = merged_df[~merged_df.index.duplicated(keep='first')]
+    
+    # مرتب‌سازی بر اساس زمان
+    merged_df.sort_index(inplace=True)
+    
+    # ایجاد پوشه data اگر وجود نداشت
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    # ذخیره در فایل CSV
+    output_path = os.path.join(data_dir, output_file)
+    merged_df.to_csv(output_path)
+    
+    print(f"داده‌های ادغام شده با موفقیت در {output_path} ذخیره شدند.")
+    print(f"تعداد کل ساعت‌ها پس از ادغام: {len(merged_df)}")
+    print(f"بازه زمانی: از {merged_df.index.min()} تا {merged_df.index.max()}")
+    
+    return merged_df
+
+def convert_hourly_to_daily(hourly_data, output_file=None):
+    """
+    تبدیل داده‌های ساعتی به داده‌های روزانه
+    
+    Args:
+        hourly_data (DataFrame): دیتافریم داده‌های ساعتی
+        output_file (str, optional): نام فایل خروجی برای ذخیره داده‌های روزانه
+        
+    Returns:
+        DataFrame: داده‌های روزانه
+    """
+    if hourly_data is None or hourly_data.empty:
+        print("داده‌های ساعتی خالی هستند.")
+        return None
+    
+    # اطمینان از اینکه ایندکس از نوع datetime است
+    if not isinstance(hourly_data.index, pd.DatetimeIndex):
+        print("ایندکس داده‌ها باید از نوع datetime باشد.")
+        return None
+    
+    # تبدیل به داده‌های روزانه
+    daily_data = pd.DataFrame()
+    
+    # گروه‌بندی بر اساس تاریخ (بدون ساعت)
+    grouped = hourly_data.groupby(hourly_data.index.date)
+    
+    # محاسبه OHLCV روزانه
+    if 'Open' in hourly_data.columns:
+        daily_data['Open'] = grouped['Open'].first()
+    if 'High' in hourly_data.columns:
+        daily_data['High'] = grouped['High'].max()
+    if 'Low' in hourly_data.columns:
+        daily_data['Low'] = grouped['Low'].min()
+    if 'Close' in hourly_data.columns:
+        daily_data['Close'] = grouped['Close'].last()
+    if 'Volume' in hourly_data.columns:
+        daily_data['Volume'] = grouped['Volume'].sum()
+    
+    # تبدیل ایندکس به datetime
+    daily_data.index = pd.to_datetime(daily_data.index)
+    
+    # محاسبه ویژگی‌های اضافی
+    if 'Close' in daily_data.columns and 'Open' in daily_data.columns:
+        daily_data['Daily_Change'] = (daily_data['Close'] - daily_data['Open']) / daily_data['Open'] * 100
+    
+    if 'Close' in daily_data.columns:
+        # میانگین متحرک ساده ۷ روزه
+        daily_data['SMA_7'] = daily_data['Close'].rolling(window=7).mean()
+        
+        # میانگین متحرک ساده ۳۰ روزه
+        daily_data['SMA_30'] = daily_data['Close'].rolling(window=30).mean()
+        
+        # نوسانات قیمت (انحراف معیار ۷ روزه)
+        daily_data['Volatility_7d'] = daily_data['Close'].rolling(window=7).std()
+    
+    # ذخیره در فایل CSV اگر نام فایل مشخص شده باشد
+    if output_file:
+        # ایجاد پوشه data اگر وجود نداشت
+        data_dir = "data"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        
+        # ذخیره در فایل CSV
+        output_path = os.path.join(data_dir, output_file)
+        daily_data.to_csv(output_path)
+        print(f"داده‌های روزانه با موفقیت در {output_path} ذخیره شدند.")
+    
+    print(f"تعداد کل روزها: {len(daily_data)}")
+    print(f"بازه زمانی: از {daily_data.index.min()} تا {daily_data.index.max()}")
+    
+    return daily_data
+
+def extract_daily_min_max_hours(hourly_data, output_file=None):
+    """
+    استخراج ساعت و مقدار کمترین و بیشترین قیمت بسته شدن در هر روز
+    
+    Args:
+        hourly_data (DataFrame): دیتافریم داده‌های ساعتی
+        output_file (str, optional): نام فایل خروجی برای ذخیره نتایج
+        
+    Returns:
+        DataFrame: داده‌های روزانه با ساعت و مقدار کمترین و بیشترین قیمت
+    """
+    if hourly_data is None or hourly_data.empty:
+        print("داده‌های ساعتی خالی هستند.")
+        return None
+    
+    # اطمینان از اینکه ایندکس از نوع datetime است
+    if not isinstance(hourly_data.index, pd.DatetimeIndex):
+        print("ایندکس داده‌ها باید از نوع datetime باشد.")
+        return None
+    
+    # اطمینان از وجود ستون Close
+    if 'Close' not in hourly_data.columns:
+        print("ستون 'Close' در داده‌ها وجود ندارد.")
+        return None
+    
+    # ایجاد ستون‌های تاریخ و ساعت
+    hourly_data = hourly_data.copy()
+    hourly_data['Date'] = hourly_data.index.date
+    hourly_data['Hour'] = hourly_data.index.hour
+    
+    # ایجاد دیتافریم نتیجه
+    result = pd.DataFrame()
+    
+    # گروه‌بندی بر اساس تاریخ
+    for date, group in hourly_data.groupby('Date'):
+        # یافتن ردیف با کمترین قیمت بسته شدن
+        min_row = group.loc[group['Close'].idxmin()]
+        # یافتن ردیف با بیشترین قیمت بسته شدن
+        max_row = group.loc[group['Close'].idxmax()]
+        
+        # ایجاد ردیف جدید برای نتیجه
+        new_row = {
+            'Date': date,
+            'Min_Hour': min_row['Hour'],
+            'Min_Close': min_row['Close'],
+            'Max_Hour': max_row['Hour'],
+            'Max_Close': max_row['Close'],
+            'Daily_Range': max_row['Close'] - min_row['Close'],
+            'Daily_Range_Percent': (max_row['Close'] - min_row['Close']) / min_row['Close'] * 100
+        }
+        
+        # اضافه کردن به دیتافریم نتیجه
+        result = pd.concat([result, pd.DataFrame([new_row])], ignore_index=True)
+    
+    # تبدیل ستون Date به datetime
+    result['Date'] = pd.to_datetime(result['Date'])
+    
+    # تنظیم Date به عنوان ایندکس
+    result.set_index('Date', inplace=True)
+    
+    # مرتب‌سازی بر اساس تاریخ
+    result.sort_index(inplace=True)
+    
+    # ذخیره در فایل CSV اگر نام فایل مشخص شده باشد
+    if output_file:
+        # ایجاد پوشه data اگر وجود نداشت
+        data_dir = "data"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        
+        # ذخیره در فایل CSV
+        output_path = os.path.join(data_dir, output_file)
+        result.to_csv(output_path)
+        print(f"داده‌های ساعت کمترین و بیشترین قیمت روزانه با موفقیت در {output_path} ذخیره شدند.")
+    
+    print(f"تعداد کل روزها: {len(result)}")
+    print(f"بازه زمانی: از {result.index.min()} تا {result.index.max()}")
+    
+    return result
+
+def plot_min_max_hour_frequency(min_max_data, output_file=None):
+    """
+    ایجاد نمودار فراوانی ساعت کمترین و بیشترین قیمت
+    
+    Args:
+        min_max_data (DataFrame): دیتافریم حاصل از تابع extract_daily_min_max_hours
+        output_file (str, optional): نام فایل خروجی برای ذخیره نمودار
+        
+    Returns:
+        tuple: (فراوانی ساعت کمترین قیمت، فراوانی ساعت بیشترین قیمت)
+    """
+    if min_max_data is None or min_max_data.empty:
+        print("داده‌های ورودی خالی هستند.")
+        return None
+    
+    # اطمینان از وجود ستون‌های مورد نیاز
+    required_columns = ['Min_Hour', 'Max_Hour']
+    missing_columns = [col for col in required_columns if col not in min_max_data.columns]
+    
+    if missing_columns:
+        print(f"ستون‌های {', '.join(missing_columns)} در داده‌ها وجود ندارند.")
+        return None
+    
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # محاسبه فراوانی ساعت‌های کمترین و بیشترین قیمت
+    min_hour_freq = min_max_data['Min_Hour'].value_counts().sort_index()
+    max_hour_freq = min_max_data['Max_Hour'].value_counts().sort_index()
+    
+    # اطمینان از وجود همه ساعت‌ها (0-23)
+    all_hours = np.arange(24)
+    min_hour_freq = min_hour_freq.reindex(all_hours, fill_value=0)
+    max_hour_freq = max_hour_freq.reindex(all_hours, fill_value=0)
+    
+    # ایجاد نمودار
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # نمودار فراوانی ساعت کمترین قیمت
+    ax1.bar(min_hour_freq.index, min_hour_freq.values, color='red', alpha=0.7)
+    ax1.set_title('فراوانی ساعت کمترین قیمت', fontsize=14)
+    ax1.set_xlabel('ساعت روز', fontsize=12)
+    ax1.set_ylabel('تعداد روزها', fontsize=12)
+    ax1.set_xticks(all_hours)
+    ax1.grid(True, linestyle='--', alpha=0.7)
+    
+    # اضافه کردن برچسب مقدار روی هر ستون
+    for i, v in enumerate(min_hour_freq.values):
+        if v > 0:
+            ax1.text(i, v + 0.5, str(v), ha='center', fontsize=10)
+    
+    # نمودار فراوانی ساعت بیشترین قیمت
+    ax2.bar(max_hour_freq.index, max_hour_freq.values, color='green', alpha=0.7)
+    ax2.set_title('فراوانی ساعت بیشترین قیمت', fontsize=14)
+    ax2.set_xlabel('ساعت روز', fontsize=12)
+    ax2.set_ylabel('تعداد روزها', fontsize=12)
+    ax2.set_xticks(all_hours)
+    ax2.grid(True, linestyle='--', alpha=0.7)
+    
+    # اضافه کردن برچسب مقدار روی هر ستون
+    for i, v in enumerate(max_hour_freq.values):
+        if v > 0:
+            ax2.text(i, v + 0.5, str(v), ha='center', fontsize=10)
+    
+    plt.tight_layout()
+    
+    # ذخیره نمودار اگر نام فایل مشخص شده باشد
+    if output_file:
+        # ایجاد پوشه data اگر وجود نداشت
+        data_dir = "data"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        
+        # ذخیره نمودار
+        output_path = os.path.join(data_dir, output_file)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"نمودار فراوانی ساعت کمترین و بیشترین قیمت با موفقیت در {output_path} ذخیره شد.")
+    
+    plt.show()
+    
+    # ایجاد دیتافریم فراوانی‌ها برای بازگشت
+    freq_df = pd.DataFrame({
+        'Min_Hour_Frequency': min_hour_freq.values,
+        'Max_Hour_Frequency': max_hour_freq.values
+    }, index=all_hours)
+    
+    # چاپ خلاصه آماری
+    print("\nفراوانی ساعت کمترین قیمت:")
+    print(min_hour_freq)
+    print("\nفراوانی ساعت بیشترین قیمت:")
+    print(max_hour_freq)
+    
+    # ساعت‌های با بیشترین فراوانی
+    most_frequent_min_hour = min_hour_freq.idxmax()
+    most_frequent_max_hour = max_hour_freq.idxmax()
+    
+    print(f"\nساعت با بیشترین فراوانی کمترین قیمت: {most_frequent_min_hour} (تعداد: {min_hour_freq.max()})")
+    print(f"ساعت با بیشترین فراوانی بیشترین قیمت: {most_frequent_max_hour} (تعداد: {max_hour_freq.max()})")
+    
+    return freq_df
+
 # مثال استفاده
 if __name__ == "__main__":
+    # مثال ۱: دریافت داده‌های نوبیتکس
     # اطلاعات ورودی
-    start_date = "1403-01-01"
-    end_date = "1403-12-30"
-    symbol = "BTCIRT"
-    resolution = "60"
-    api_token = "YOUR_API_TOKEN_HERE"  # توکن خودت رو جایگزین کن
-    
+    # start_date = "1403-01-01"
+    # end_date = "1403-12-30"
+    # symbol = "BTCIRT"
+    # resolution = "60"
+    # api_token = "YOUR_API_TOKEN_HERE"  # توکن خودت رو جایگزین کن
     # فراخوانی تابع
-    result_df = fetch_nobitex_ohlc(start_date, end_date, symbol, resolution, api_token)
-    if not result_df.empty:
-        print(result_df.head())
-        print(f"تعداد کل ردیف‌ها: {len(result_df)}")
+    # result_df = fetch_nobitex_ohlc(start_date, end_date, symbol, resolution, api_token)
+    # if not result_df.empty:
+    #     print(result_df.head())
+    #     print(f"تعداد کل ردیف‌ها: {len(result_df)}")
+    
+    # مثال ۲: خواندن داده‌های ساعتی از فایل CSV
+    # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
+    # if hourly_data is not None:
+    #     print(hourly_data.head())
+    
+    # مثال ۳: ادغام چندین فایل CSV ساعتی
+    # files_to_merge = [
+    #     "nobitex_1403-01-01_to_1403-03-31_60.csv",
+    #     "nobitex_1403-04-01_to_1403-06-31_60.csv",
+    #     "nobitex_1403-07-01_to_1403-09-30_60.csv",
+    #     "nobitex_1403-10-01_to_1403-12-30_60.csv"
+    # ]
+    # merged_data = merge_hourly_data_files(files_to_merge, "merged_1403_hourly.csv")
+    
+    # مثال ۴: تبدیل داده‌های ساعتی به روزانه
+    # if merged_data is not None:
+    #     daily_data = convert_hourly_to_daily(merged_data, "btc_1403_daily.csv")
+    #     if daily_data is not None:
+    #         print(daily_data.head())
+    
+    # مثال ۵: استخراج ساعت کمترین و بیشترین قیمت بسته شدن در هر روز
+    # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
+    # if hourly_data is not None:
+    #     min_max_hours = extract_daily_min_max_hours(hourly_data, "btc_daily_min_max_hours.csv")
+    #     if min_max_hours is not None:
+    #         print("\nنمونه داده‌های ساعت کمترین و بیشترین قیمت روزانه:")
+    #         print(min_max_hours.head())
+    #         print("\nآمار توصیفی:")
+    #         print(min_max_hours.describe())
+    
+    # مثال ۶: ایجاد نمودار فراوانی ساعت کمترین و بیشترین قیمت
+    # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
+    # if hourly_data is not None:
+    #     min_max_hours = extract_daily_min_max_hours(hourly_data)
+    #     if min_max_hours is not None:
+    #         freq_df = plot_min_max_hour_frequency(min_max_hours, "btc_min_max_hour_frequency.png")
+    #         if freq_df is not None:
+    #             print("\nفراوانی ساعت‌های کمترین و بیشترین قیمت:")
+    #             print(freq_df)
+    
+    print("برای استفاده از توابع، کامنت‌های مربوطه را از حالت کامنت خارج کنید.")
