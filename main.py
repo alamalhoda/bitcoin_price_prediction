@@ -26,10 +26,10 @@ def main():
     # اجرای مدل‌ها
     # predict_future_with_linear(data)
     # predict_with_random_forest(data)
-    predict_with_lstm(data)
+    # predict_with_lstm(data)
     # predict_with_gru(data)
     # predict_with_arima(data)
-    # predict_with_tcn(data)
+    predict_with_tcn(data)
 
     # لود دیتا از فایل با تنظیم skiprows
     # data = pd.read_csv('/Users/alamalhoda/Projects/bitcoin_price_prediction/bitcoin_data.csv', skiprows=2)  # رد کردن دو خط اول

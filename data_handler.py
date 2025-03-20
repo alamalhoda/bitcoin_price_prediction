@@ -15,7 +15,7 @@ def fetch_data(ticker='BTC-USD', start_date='2010-01-01', end_date='2025-03-06',
     data.index.name = 'Date'
     return data
 
-def load_data_from_csv(file_path='bitcoin_data.csv'):
+def load_data_from_csv(file_path='nobitex_1403-01-01_to_1403-12-30_360.csv'):
     try:
         # مسیر کامل فایل
         data_dir = "data"
@@ -29,7 +29,7 @@ def load_data_from_csv(file_path='bitcoin_data.csv'):
         print(f"Error: File '{full_path}' not found.")
         return None
 
-def save_data_to_csv(data, file_path='bitcoin_data.csv'):
+def save_data_to_csv(data, file_path='nobitex_1403_360.csv'):
     # ایجاد پوشه data اگر وجود نداشت
     data_dir = "data"
     if not os.path.exists(data_dir):
@@ -763,16 +763,17 @@ def plot_hour_price_correlations(min_max_data, output_file=None):
 if __name__ == "__main__":
     # مثال ۱: دریافت داده‌های نوبیتکس
     # اطلاعات ورودی
-    # start_date = "1403-01-01"
-    # end_date = "1403-12-30"
-    # symbol = "BTCIRT"
-    # resolution = "60"
-    # api_token = "YOUR_API_TOKEN_HERE"  # توکن خودت رو جایگزین کن
+    start_date = "1403-01-01"
+    end_date = "1403-12-30"
+    symbol = "BTCIRT"
+    resolution = "360"
+    api_token = "YOUR_API_TOKEN_HERE"  # توکن خودت رو جایگزین کن
     # فراخوانی تابع
-    # result_df = fetch_nobitex_ohlc(start_date, end_date, symbol, resolution, api_token)
-    # if not result_df.empty:
-    #     print(result_df.head())
-    #     print(f"تعداد کل ردیف‌ها: {len(result_df)}")
+    result_df = fetch_nobitex_ohlc(start_date, end_date, symbol, resolution, api_token)
+    if not result_df.empty:
+        print(result_df.head())
+        save_data_to_csv(result_df, "nobitex_1403_360.csv")
+        print(f"تعداد کل ردیف‌ها: {len(result_df)}")
     
     # مثال ۲: خواندن داده‌های ساعتی از فایل CSV
     # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
