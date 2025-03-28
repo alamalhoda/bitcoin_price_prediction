@@ -759,6 +759,19 @@ def plot_hour_price_correlations(min_max_data, output_file=None):
     
     plt.show()
 
+
+def analyze_weekly_patterns(min_max_data):
+    min_max_data = min_max_data.copy()
+    min_max_data['Day_of_Week'] = min_max_data.index.day_name()
+    min_by_day = min_max_data.groupby('Day_of_Week')['Min_Hour'].mean()
+    max_by_day = min_max_data.groupby('Day_of_Week')['Max_Hour'].mean()
+    print("\nمیانگین ساعت کمینه به تفکیک روز هفته:")
+    print(min_by_day)
+    print("\nمیانگین ساعت بیشینه به تفکیک روز هفته:")
+    print(max_by_day)
+    return min_by_day, max_by_day
+
+
 # مثال استفاده
 if __name__ == "__main__":
     # مثال ۱: دریافت داده‌های نوبیتکس
@@ -816,10 +829,14 @@ if __name__ == "__main__":
     #             print(freq_df)
     
     # مثال ۷: تحلیل و نمایش همبستگی بین ساعت کمینه/بیشینه و تغییرات قیمت
-    # hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
-    # if hourly_data is not None:
-    #     min_max_hours = extract_daily_min_max_hours(hourly_data)
-    #     if min_max_hours is not None:
-    #         plot_hour_price_correlations(min_max_hours, "btc_hour_price_correlations.png")
+    hourly_data = load_hourly_data("nobitex_1403-01-01_to_1403-12-30_60.csv")
+    if hourly_data is not None:
+        min_max_hours = extract_daily_min_max_hours(hourly_data,"extracted_daily_min_max_hours_1403-01-01_to_1403-12-30_60.csv")
+        if min_max_hours is not None:
+            plot_hour_price_correlations(min_max_hours, "btc_hour_price_correlations.png")
+            plot_min_max_hour_frequency(min_max_hours, "btc_min_max_hour_frequency.png")
     
+    if min_max_hours is not None:
+        analyze_weekly_patterns(min_max_hours)
+        
     print("برای استفاده از توابع، کامنت‌های مربوطه را از حالت کامنت خارج کنید.")
