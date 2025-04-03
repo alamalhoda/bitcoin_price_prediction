@@ -8,6 +8,7 @@ from gru_model import predict_with_gru
 from arima_model import predict_with_arima
 from prophet_model import predict_with_prophet
 from tcn_model import predict_with_tcn
+from improved_tcn_model import predict_with_improved_tcn
 
 def main():
     data = load_data_from_csv()
@@ -29,7 +30,8 @@ def main():
     # predict_with_lstm(data)
     # predict_with_gru(data)
     # predict_with_arima(data)
-    predict_with_tcn(data)
+    # predict_with_tcn(data)
+    predict_with_improved_tcn(data)
 
     # لود دیتا از فایل با تنظیم skiprows
     # data = pd.read_csv('/Users/alamalhoda/Projects/bitcoin_price_prediction/bitcoin_data.csv', skiprows=2)  # رد کردن دو خط اول
